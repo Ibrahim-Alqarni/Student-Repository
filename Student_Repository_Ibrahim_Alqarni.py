@@ -1,13 +1,129 @@
 """ 
-    HW 10 -- Ibrahim Alqaeni
+    HW 11 -- Ibrahim Alqaeni
     Data repository of courses, students, instructors, majors and grades. 
+    Using Database. 
 """
 import os
+import sqlite3
 from prettytable import PrettyTable
 from collections import defaultdict
 from typing import Dict, DefaultDict, Set, Any, Tuple, Iterator
 from HW08_Ibrahim_Alqarni import file_reader
 
+class Repository:
+    ''' a class to store all info about the student and instructor '''
+    def __init__(self, the_dir: str, ptab: bool = True):
+        self._the_dir: str = the_dir
+        self._student: Dict[str, Student] = dict()
+        self._instructor: Dict[str, Instructor] = dict()
+        self._major: Dict[str, Major] = dict()
+        db_path = '/Users/ibrah/Downloads/DataGrip 2020.1/bin/StudentRepository.sqlite'
+
+
+
+        try:
+            self._read_major(os.path.join(the_dir, 'majors.txt'))
+            self._read_student(os.path.join(the_dir, 'students.txt'))
+            self._read_instructor(os.path.join(the_dir, 'instructors.txt'))
+            self._read_grade(os.path.join(the_dir, 'grades.txt'))
+
+
+        except ValueError as e:
+            print(e)
+        except FileNotFoundError as e:
+            print(e)
+        
+        if ptab:
+            print('\nMajors Summary')
+            self.major_pre_tab()
+
+            print('\nStudent Summary')
+            self.student_pre_tab()
+        
+            print('\nInstructor Summary')
+            self.instructor_pre_tab()
+
+            print('\nStudent Grades Summary from DB')
+            self.student_grades_pre_tab()
+
+    
+    def major_pre_tab(self):
+        ''' to print a pretty table with the students info '''
+        pt = PrettyTable(field_names=Major.PT_FIELD_In)
+
+        for name in self._major.values():
+            pt.add_row(name.info())
+
+        print(pt)
+
+    def student_pre_tab(self):
+        ''' to print a pretty table with the students info '''
+        pt = PrettyTable(field_names= Student.PT_FIELD_St)
+
+        for name in self._student.values():
+            pt.add_row(name.info())
+        print(pt)
+
+    def instructor_pre_tab(self):
+        ''' to print a pretty table with the instructors info '''
+        pt = PrettyTable(field_names= Instructor.PT_FIELD_In)
+
+        for name in self._instructor.values():
+            for i in name.info():
+                '''if the instructor have multaple courses'''
+                pt.add_row(i)
+        print(pt)
+        
+    def student_grades_pre_tab(self, db_path):
+        ''' to print a pretty table with the query info '''
+        pt = PrettyTable(field_names= Student.PT_Top)
+
+        db = sqlite3.connect(db_path)
+    
+        query = """
+                select s.Name as Student_Name, s.CWID, g.Grade, g.Course, i.Name as Instructor_Name
+                from 
+                    students s inner join grades g on s.CWID = g.StudentCWID 
+                        inner join instructors i on i.CWID = g.InstructorCWID
+                order by s.Name """
+
+        for row in db.execute(query):
+            pt.add_row(row)
+
+        print(pt)
+
+    def _read_student(self, the_dir: str) -> None:
+        ''' to read the student info and store it in student dict '''
+        for cwid, name, major in file_reader(the_dir, 3, sep='\t', header=True):
+            if major not in self._major:
+                print(f'a student with the CWID {cwid} has unknown major')
+            else:
+                self._student[cwid] = Student(cwid, name, self._major[major])
+
+    def _read_instructor(self, the_dir: str) -> None:
+        ''' to read the instructor info and store it in instructor dict '''
+        for cwid, name, dept in file_reader(the_dir, 3, sep='\t', header=True):
+            self._instructor[cwid] = Instructor(cwid, name, dept)
+
+    def _read_grade(self, the_dir: str) -> None:
+        ''' to assign the grade to each student and instructor '''
+        for stud_cwid, course, grade, inst_cwid in file_reader(the_dir, 4, sep='\t', header=True):
+            if stud_cwid in self._student:
+                self._student[stud_cwid].store_course_grade(course, grade)
+            else:
+                raise ValueError(f"can't find the value for the student with the CWID{stud_cwid}")
+
+            if inst_cwid in self._instructor:
+                self._instructor[inst_cwid].add_inst(course)
+            else:
+                raise ValueError(f"can't find the value for the instructor with the CWID{stud_cwid}")
+    
+    def _read_major(self, the_dir: str) -> None:
+        ''' to read the major info and store it in major dict '''
+        for major, flag, course in file_reader(the_dir, 3, sep='\t', header=True):
+            if major not in self._major:
+                self._major[major] = Major(major)
+            self._major[major].add_major(flag, course)
 
 class Major:
     PT_FIELD_In = ['Dept', 'Required', 'Electives']
@@ -47,10 +163,10 @@ class Major:
         ''' to return a list of majors info to add to the pretty table '''
         return self.major, sorted(self.required), sorted(self.elective)
 
-
 class Student:
     ''' a class to store the Student '''
     PT_FIELD_St = ['CWID', 'Name', 'Major', 'Completed Courses', 'Remaining Required', 'Remaining Electives', 'GPA']
+    PT_Top = ['Name', 'CWID', 'Course', 'Grade', 'Instructor']
 
     def __init__(self, cwid: str, name: str, major: Major):
         self.cwid: str = cwid
@@ -105,102 +221,11 @@ class Instructor:
             yield self.cwid, self.name, self.dept, course, count
 
 
-class Repository:
-    ''' a class to store all info about the student and instructor '''
-    def __init__(self, the_dir: str, ptab: bool = True):
-        self._the_dir: str = the_dir
-        self._student: Dict[str, Student] = dict()
-        self._instructor: Dict[str, Instructor] = dict()
-        self._major: Dict[str, Major] = dict()
-
-
-        try:
-            self._read_major(os.path.join(the_dir, 'majors.txt'))
-            self._read_student(os.path.join(the_dir, 'students.txt'))
-            self._read_instructor(os.path.join(the_dir, 'instructors.txt'))
-            self._read_grade(os.path.join(the_dir, 'grades.txt'))
-
-
-        except ValueError as e:
-            print(e)
-        except FileNotFoundError as e:
-            print(e)
-        
-        if ptab:
-            print('\nMajors Summary')
-            self.major_pre_tab()
-
-            print('\nStudent Summary')
-            self.student_pre_tab()
-        
-            print('\nInstructor Summary')
-            self.instructor_pre_tab()
-
-    
-    def major_pre_tab(self):
-        ''' to print a pretty table with the students info '''
-        pt = PrettyTable(field_names=Major.PT_FIELD_In)
-
-        for name in self._major.values():
-            pt.add_row(name.info())
-
-        print(pt)
-
-    def student_pre_tab(self):
-        ''' to print a pretty table with the students info '''
-        pt = PrettyTable(field_names= Student.PT_FIELD_St)
-
-        for name in self._student.values():
-            pt.add_row(name.info())
-        print(pt)
-
-    def instructor_pre_tab(self):
-        ''' to print a pretty table with the instructors info '''
-        pt = PrettyTable(field_names= Instructor.PT_FIELD_In)
-
-        for name in self._instructor.values():
-            for i in name.info():
-                '''if the instructor have multaple courses'''
-                pt.add_row(i)
-        print(pt)
-        
-    def _read_student(self, the_dir: str) -> None:
-        ''' to read the student info and store it in student dict '''
-        for cwid, name, major in file_reader(the_dir, 3, sep=';', header=True):
-            if major not in self._major:
-                print(f'a student with the CWID {cwid} has unknown major')
-            else:
-                self._student[cwid] = Student(cwid, name, self._major[major])
-
-    def _read_instructor(self, the_dir: str) -> None:
-        ''' to read the instructor info and store it in instructor dict '''
-        for cwid, name, dept in file_reader(the_dir, 3, sep='|', header=True):
-            self._instructor[cwid] = Instructor(cwid, name, dept)
-
-    def _read_grade(self, the_dir: str) -> None:
-        ''' to assign the grade to each student and instructor '''
-        for stud_cwid, course, grade, inst_cwid in file_reader(the_dir, 4, sep='|', header=True):
-            if stud_cwid in self._student:
-                self._student[stud_cwid].store_course_grade(course, grade)
-            else:
-                raise ValueError(f"can't find the value for the student with the CWID{stud_cwid}")
-
-            if inst_cwid in self._instructor:
-                self._instructor[inst_cwid].add_inst(course)
-            else:
-                raise ValueError(f"can't find the value for the instructor with the CWID{stud_cwid}")
-    
-    def _read_major(self, the_dir: str) -> None:
-        ''' to read the major info and store it in major dict '''
-        for major, flag, course in file_reader(the_dir, 3, sep='\t', header=True):
-            if major not in self._major:
-                self._major[major] = Major(major)
-            self._major[major].add_major(flag, course)
 
 
 
 def main():
-    the_dir = "C:/Users/ibrah/OneDrive/Desktop/Python_Files"
+    the_dir = "/Users/ibrah/Downloads/DataGrip 2020.1/bin"
 
     Repository(the_dir)
 
